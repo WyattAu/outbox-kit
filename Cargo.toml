@@ -1,0 +1,77 @@
+[package]
+name = "outbox-kit"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.85"
+description = "Transactional outbox for Rust — durable event envelopes, at-least-once dispatch with breaker-aware backoff, replay after restart"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/WyattAu/outbox-kit"
+keywords = ["outbox", "events", "cqrs", "reliability", "webhooks"]
+categories = ["asynchronous", "concurrency"]
+exclude = [".github/", "benches/"]
+
+[features]
+default = ["serde", "memory", "dispatch"]
+serde = ["dep:serde"]
+memory = []
+dispatch = ["dep:breaker", "dep:futures", "dep:tokio"]
+sqlite = ["dep:rusqlite"]
+
+[dependencies]
+async-trait = "0.1"
+breaker = { version = "2", optional = true }
+futures = { version = "0.3", default-features = false, features = [
+  "std",
+], optional = true }
+rand = { version = "0.10", default-features = false, features = ["std"] }
+rusqlite = { version = "0.40", features = ["bundled"], optional = true }
+serde = { version = "1", default-features = false, features = [
+  "derive",
+  "std",
+], optional = true }
+thiserror = { version = "2", default-features = false }
+tokio = { version = "1", default-features = false, features = [
+  "macros",
+  "rt",
+  "sync",
+  "time",
+], optional = true }
+uuid = { version = "1", default-features = false, features = ["std", "v7"] }
+
+[dev-dependencies]
+criterion = "0.8"
+futures = { version = "0.3", default-features = false, features = ["std"] }
+proptest = "1"
+serde_json = "1"
+tempfile = "3"
+tokio = { version = "1", features = [
+  "rt-multi-thread",
+  "macros",
+  "time",
+  "sync",
+] }
+
+[[bench]]
+name = "outbox_bench"
+harness = false
+
+[[test]]
+name = "sqlite_outbox"
+required-features = ["sqlite"]
+
+[lints.rust]
+unsafe_code = "forbid"
+missing_docs = "deny"
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+indexing_slicing = "deny"
+undocumented_unsafe_blocks = "deny"
+
+[profile.release]
+lto = "fat"
+codegen-units = 1
+strip = true
+panic = "abort"
