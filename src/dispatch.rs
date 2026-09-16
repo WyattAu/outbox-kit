@@ -268,6 +268,26 @@ impl Dispatcher {
                     .mark_failed(&event.id, &err.to_string(), retry_at)
                     .await;
             }
+            // Feature-unification safety: breaker's additive `timeout`
+            // feature appends a `Timeout` variant to `CircuitBreakerError`,
+            // and any host enabling it anywhere in the graph unifies it
+            // into this crate's build. A timed-out send is a delivery
+            // failure (same path as `Failure`), so route every other error
+            // class through the retry budget instead of failing to compile.
+            Err(other) => {
+                let attempts = event.attempts.saturating_add(1);
+                let retry_at = if self.config.backoff.is_exhausted(attempts) {
+                    NEVER
+                } else {
+                    let delay = self.config.backoff.retry_delay(attempts, event.id);
+                    now_millis()
+                        .saturating_add(u64::try_from(delay.as_millis()).unwrap_or(u64::MAX))
+                };
+                let _ = self
+                    .store
+                    .mark_failed(&event.id, &other.to_string(), retry_at)
+                    .await;
+            }
         }
     }
 }

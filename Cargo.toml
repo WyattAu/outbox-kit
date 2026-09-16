@@ -1,6 +1,6 @@
 [package]
 name = "outbox-kit"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 rust-version = "1.85"
 description = "Transactional outbox for Rust — durable event envelopes, at-least-once dispatch with breaker-aware backoff, replay after restart"
@@ -19,7 +19,11 @@ sqlite = ["dep:rusqlite"]
 
 [dependencies]
 async-trait = "0.1"
-breaker = { version = "2", optional = true }
+# `timeout` is enabled deliberately: it appends a `Timeout` variant to
+# `CircuitBreakerError`, and this crate's dispatch match must stay total
+# under ANY feature unification a consumer enables (regression: 0.1.0
+# failed to compile when a host turned `timeout` on).
+breaker = { version = "2", features = ["timeout"], optional = true }
 futures = { version = "0.3", default-features = false, features = [
   "std",
 ], optional = true }

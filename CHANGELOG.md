@@ -3,6 +3,17 @@
 All notable changes to this project are documented here. Format: [Keep a
 Changelog](https://keepachangelog.com/) — versions follow [semver](https://semver.org).
 
+## [0.1.1] - 2026-09-16
+
+### Fixed
+
+- **Dispatch now compiles under any breaker feature unification.** 0.1.0
+  matched `CircuitBreakerError` exhaustively without a wildcard arm, so a
+  host enabling breaker's additive `timeout` feature anywhere in the graph
+  broke outbox-kit's build. Unknown error classes now route through the
+  retry budget (same path as `Failure`), and breaker's `timeout` feature is
+  enabled on this crate's dependency so CI proves the unification case
+  permanently. Found by estate-integration round 3.
 ## [0.1.0] - 2026-09-15
 
 ### Added

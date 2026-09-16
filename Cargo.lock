@@ -79,6 +79,7 @@ dependencies = [
  "loom",
  "parking_lot",
  "thiserror",
+ "tokio",
 ]
 
 [[package]]
