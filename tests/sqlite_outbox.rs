@@ -129,6 +129,36 @@ async fn events_survive_a_restart_and_replay() {
     assert_eq!(store.parked_count().await.unwrap(), 0);
 }
 
+/// Dead letters are durable too: written before a "restart", readable
+/// after it, and still absent from the live dispatch path.
+#[tokio::test]
+async fn dead_letters_survive_a_restart() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("outbox.sqlite3");
+
+    {
+        let store = SqliteStore::open(&path).unwrap();
+        let e = event("orders.order-refused", 1_000);
+        store.append(&e).await.unwrap();
+        store
+            .dead_letter(&e, "destination decommissioned")
+            .await
+            .unwrap();
+        assert_eq!(store.pending_count().await.unwrap(), 0);
+    }
+
+    let store = SqliteStore::open(&path).unwrap();
+    assert_eq!(store.pending_count().await.unwrap(), 0);
+    assert_eq!(store.parked_count().await.unwrap(), 0);
+    let letters = store.dead_letters(10).await.unwrap();
+    assert_eq!(letters.len(), 1);
+    assert_eq!(
+        letters.first().unwrap().1,
+        "destination decommissioned",
+        "the reason survives the restart"
+    );
+}
+
 /// The dispatcher end to end on tempdir `SQLite`: counting sender, graceful
 /// shutdown within 2 s, then a restart finds nothing pending.
 #[tokio::test]

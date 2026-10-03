@@ -2,7 +2,7 @@
 //! circuit breaker.
 
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use breaker::{CircuitBreaker, CircuitBreakerConfig, CircuitBreakerError};
 use futures::future::BoxFuture;
@@ -12,6 +12,7 @@ use tokio::task::JoinSet;
 use crate::backoff::{BackoffPolicy, NEVER};
 use crate::error::DispatchError;
 use crate::event::{now_millis, OutboxEvent};
+use crate::metrics::{self, DispatchResult};
 use crate::store::OutboxStore;
 
 /// Default time between store polls. Default 500 ms.
@@ -20,8 +21,110 @@ pub const DEFAULT_POLL_INTERVAL: Duration = Duration::from_millis(500);
 /// Default maximum number of dispatches in flight at once. Default 16.
 pub const DEFAULT_CONCURRENCY: usize = 16;
 
-/// Default number of due events fetched per poll. Default 100.
+/// Default ceiling on due events fetched per poll (the `FetchBatch::max`
+/// default). Default 100.
 pub const DEFAULT_BATCH_SIZE: usize = 100;
+
+/// Default floor on due events fetched per poll (the `FetchBatch::min`
+/// default). Default 10.
+pub const DEFAULT_BATCH_MIN: usize = 10;
+
+/// Default number of consecutive empty polls after which the fetcher
+/// parks into the slowed idle cadence. Default 60.
+pub const DEFAULT_IDLE_PARK_AFTER: u32 = 60;
+
+/// While idle-parked, the fetcher runs once every `IDLE_POLL_DIVISOR`
+/// ticks — an empty outbox costs 1/10th of the poll load. Default 10.
+pub const IDLE_POLL_DIVISOR: u32 = 10;
+
+/// Batch-fetch tuning for the dispatcher's poll loop.
+///
+/// Two knobs, one guard:
+///
+/// - **Adaptive sizing.** Each poll fetches `current` events, starting at
+///   [`FetchBatch::min`]. A *full* batch (fetched == current) doubles
+///   `current` for the next poll, up to [`FetchBatch::max`]; any batch
+///   that comes back not-full resets to `min`. Under sustained load the
+///   loop finds its working size in `log2(max/min)` polls; under trickle
+///   load it stays small and cheap.
+/// - **Idle parking.** After [`FetchBatch::park_after`] *consecutive
+///   empty* polls the fetcher parks into a slowed cadence — one fetch
+///   every [`IDLE_POLL_DIVISOR`] ticks — until work reappears. An idle
+///   outbox therefore costs a tenth of its poll load, not all of it.
+///   (This parks the *poller cadence*; it is unrelated to events parked
+///   at [`NEVER`](crate::NEVER), which is the retry-exhaustion state.)
+///
+/// # Load tuning
+///
+/// Pick `max` from your downstream's steady-state throughput ×
+/// [`poll_interval`](DispatcherConfig::poll_interval): a dispatch loop
+/// draining 500 events/second against a 500 ms poll wants `max >= 250` or
+/// the batch caps out before the tick ends (the loop self-corrects next
+/// tick — the cap costs latency spread, not loss). Raise `min` when your
+/// backlog *never* trickles (always-full batches waste the doubling
+/// ramp); raise `park_after` when bursty producers alternate idle and
+/// hot windows inside one poll-interval scale. Measure with the same
+/// harness you stress the rest of the pipeline with (a k6 scenario
+/// against the producer at target RPS works): watch
+/// `outbox_pending` for drain slope and `outbox_dispatch_duration_seconds`
+/// for downstream saturation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FetchBatch {
+    /// Initial (and reset) batch size per poll. Clamped to at least 1.
+    /// Default [`DEFAULT_BATCH_MIN`] (10).
+    pub min: usize,
+    /// Batch-size ceiling. Clamped to at least `min`. Default
+    /// [`DEFAULT_BATCH_SIZE`] (100).
+    pub max: usize,
+    /// Consecutive empty polls before the fetcher parks into the slowed
+    /// idle cadence. Clamped to at least 1. Default
+    /// [`DEFAULT_IDLE_PARK_AFTER`] (60 — with the default 500 ms poll,
+    /// 30 s of idle before slowing down).
+    pub park_after: u32,
+}
+
+impl Default for FetchBatch {
+    fn default() -> Self {
+        Self {
+            min: DEFAULT_BATCH_MIN,
+            max: DEFAULT_BATCH_SIZE,
+            park_after: DEFAULT_IDLE_PARK_AFTER,
+        }
+    }
+}
+
+impl FetchBatch {
+    /// Clamp all fields into their valid ranges (`min >= 1`,
+    /// `max >= min`, `park_after >= 1`).
+    #[must_use]
+    pub fn saturated(self) -> Self {
+        let min = self.min.max(1);
+        Self {
+            min,
+            max: self.max.max(min),
+            park_after: self.park_after.max(1),
+        }
+    }
+
+    /// The next poll's batch size given `current` and how many events the
+    /// last fetch returned: double on a full batch up to `max`, reset to
+    /// `min` otherwise.
+    #[must_use]
+    pub fn next_size(&self, current: usize, fetched: usize) -> usize {
+        if fetched >= current {
+            current.saturating_mul(2).min(self.max).max(self.min)
+        } else {
+            self.min
+        }
+    }
+
+    /// Whether `empty_streak` consecutive empty polls have earned the
+    /// slowed idle cadence.
+    #[must_use]
+    pub fn is_idle_parked(&self, empty_streak: u32) -> bool {
+        empty_streak >= self.park_after
+    }
+}
 
 /// The delivery closure: given an event, attempt to deliver it.
 ///
@@ -42,9 +145,11 @@ pub struct DispatcherConfig {
     /// Time between store polls. Clamped to at least 1 ms. Default
     /// [`DEFAULT_POLL_INTERVAL`] (500 ms).
     pub poll_interval: Duration,
-    /// Maximum due events fetched per poll. Clamped to at least 1.
-    /// Default [`DEFAULT_BATCH_SIZE`] (100).
-    pub batch_size: usize,
+    /// Batch-fetch tuning: adaptive sizing floor/ceiling and the
+    /// idle-parking threshold. Default
+    /// [`FetchBatch::default()`] — min 10, max 100, idle-park after 60
+    /// empty polls.
+    pub fetch_batch: FetchBatch,
     /// Maximum dispatches in flight concurrently. Clamped to at least 1.
     /// Default [`DEFAULT_CONCURRENCY`] (16).
     pub concurrency: usize,
@@ -65,7 +170,7 @@ impl Default for DispatcherConfig {
     fn default() -> Self {
         Self {
             poll_interval: DEFAULT_POLL_INTERVAL,
-            batch_size: DEFAULT_BATCH_SIZE,
+            fetch_batch: FetchBatch::default(),
             concurrency: DEFAULT_CONCURRENCY,
             backoff: BackoffPolicy::default(),
             breaker: CircuitBreakerConfig::standard(),
@@ -196,12 +301,25 @@ impl Dispatcher {
     /// Run the poll loop until [`shutdown`](Self::shutdown) is signalled,
     /// then drain in-flight dispatches and return. See the [type
     /// docs](Self) for the lifecycle pattern.
+    ///
+    /// The loop adapts its batch size between
+    /// [`fetch_batch.min`](FetchBatch::min) and
+    /// [`fetch_batch.max`](FetchBatch::max) and parks into a slowed idle
+    /// cadence after [`fetch_batch.park_after`](FetchBatch::park_after)
+    /// empty polls. Each outcome also lands on the dispatch metrics (see
+    /// [`crate::metrics`]): `outbox_dispatch_total{result}`,
+    /// `outbox_dispatch_duration_seconds`, and a per-poll
+    /// `outbox_pending` gauge snapshot.
     pub async fn run(self: Arc<Self>) {
         let poll_interval = self.config.poll_interval.max(Duration::from_millis(1));
+        let batch = self.config.fetch_batch.clone().saturated();
         let mut ticker = tokio::time::interval(poll_interval);
         ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
         let mut in_flight: JoinSet<()> = JoinSet::new();
         let mut shutdown_rx = self.shutdown_rx.clone();
+        let mut batch_size = batch.min;
+        let mut empty_streak: u32 = 0;
+        let mut idle_tick: u32 = 0;
 
         loop {
             tokio::select! {
@@ -211,24 +329,42 @@ impl Dispatcher {
                     }
                 }
                 _ = ticker.tick() => {
-                    if let Ok(due) = self
-                        .store
-                        .fetch_due(self.config.batch_size.max(1), now_millis())
-                        .await {
-                        for event in due {
-                            let dispatcher = Arc::clone(&self);
-                            in_flight.spawn(async move {
-                                dispatcher.process(event).await;
-                            });
+                    // Idle parking: once the streak of empty polls earns
+                    // it, fetch on only one tick in IDLE_POLL_DIVISOR.
+                    if batch.is_idle_parked(empty_streak) {
+                        idle_tick = (idle_tick + 1) % IDLE_POLL_DIVISOR;
+                        if idle_tick != 0 {
+                            continue;
                         }
-                        // The batch drains before the next poll, so
-                        // `fetch_due` never double-fires an event
-                        // still in flight.
-                        while in_flight.join_next().await.is_some() {}
-                    } else {
+                    }
+                    let Ok(due) = self.store.fetch_due(batch_size, now_millis()).await
+                    else {
                         // Store hiccup: skip this tick, retry on the
                         // next interval. A slow outbox beats a crashy
                         // one.
+                        continue;
+                    };
+                    if due.is_empty() {
+                        empty_streak = empty_streak.saturating_add(1);
+                    } else {
+                        empty_streak = 0;
+                    }
+                    batch_size = batch.next_size(batch_size, due.len());
+                    for event in due {
+                        let dispatcher = Arc::clone(&self);
+                        in_flight.spawn(async move {
+                            dispatcher.process(event).await;
+                        });
+                    }
+                    // The batch drains before the next poll, so
+                    // `fetch_due` never double-fires an event
+                    // still in flight.
+                    while in_flight.join_next().await.is_some() {}
+                    // Backlog gauge: one store read per *effective*
+                    // poll (idle-parked polls amortize it). The gauge
+                    // lags the store between samples.
+                    if let Ok(pending) = self.store.pending_count().await {
+                        metrics::set_pending(pending);
                     }
                 }
             }
@@ -244,17 +380,23 @@ impl Dispatcher {
             return; // Semaphore is never closed; unreachable in practice.
         };
 
+        let started = Instant::now();
         match self.breaker.call(|| (self.sender)(&event)).await {
             Ok(()) => {
+                metrics::dispatch_result(DispatchResult::Success);
+                metrics::observe_duration(started.elapsed());
                 let _ = self.store.mark_dispatched(&event.id).await;
             }
             Err(CircuitBreakerError::CircuitOpen | CircuitBreakerError::Rejected) => {
                 // Paused (Open) or probe slots taken (HalfOpen): leave the
                 // event due and the attempt budget untouched. The next
                 // poll refetches it; the breaker, not the retry budget,
-                // owns this pause.
+                // owns this pause. Not timed — nothing ran.
+                metrics::dispatch_result(DispatchResult::BreakerPaused);
             }
             Err(CircuitBreakerError::Failure(err)) => {
+                metrics::dispatch_result(DispatchResult::Failure);
+                metrics::observe_duration(started.elapsed());
                 let attempts = event.attempts.saturating_add(1);
                 let retry_at = if self.config.backoff.is_exhausted(attempts) {
                     NEVER
@@ -275,6 +417,8 @@ impl Dispatcher {
             // failure (same path as `Failure`), so route every other error
             // class through the retry budget instead of failing to compile.
             Err(other) => {
+                metrics::dispatch_result(DispatchResult::Failure);
+                metrics::observe_duration(started.elapsed());
                 let attempts = event.attempts.saturating_add(1);
                 let retry_at = if self.config.backoff.is_exhausted(attempts) {
                     NEVER
@@ -333,7 +477,11 @@ mod tests {
     fn cfg(poll: Duration) -> DispatcherConfig {
         DispatcherConfig {
             poll_interval: poll,
-            batch_size: 10,
+            fetch_batch: FetchBatch {
+                min: 10,
+                max: 10,
+                park_after: u32::MAX,
+            },
             concurrency: 4,
             backoff: BackoffPolicy {
                 base: Duration::from_millis(10),
@@ -687,5 +835,118 @@ mod tests {
         assert_eq!(first.0, "orders");
         assert_eq!(first.1, "t-1");
         assert_eq!(first.2, b"payload");
+    }
+
+    #[test]
+    fn fetch_batch_saturation_clamps() {
+        let batch = FetchBatch {
+            min: 0,
+            max: 0,
+            park_after: 0,
+        }
+        .saturated();
+        assert_eq!(batch.min, 1, "min floors at 1");
+        assert_eq!(batch.max, 1, "max floors at min");
+        assert_eq!(batch.park_after, 1, "park_after floors at 1");
+
+        let inverted = FetchBatch {
+            min: 50,
+            max: 10,
+            park_after: 60,
+        }
+        .saturated();
+        assert_eq!(inverted.max, 50, "max must never sit below min");
+        assert_eq!(inverted.min, 50);
+    }
+
+    #[test]
+    fn fetch_batch_grows_on_full_and_resets_on_partial() {
+        let batch = FetchBatch {
+            min: 10,
+            max: 100,
+            park_after: 60,
+        };
+        // Full batches double, capped at max.
+        assert_eq!(batch.next_size(10, 10), 20);
+        assert_eq!(batch.next_size(20, 20), 40);
+        assert_eq!(batch.next_size(80, 80), 100);
+        assert_eq!(batch.next_size(100, 100), 100, "ceiling holds");
+        // A not-full batch resets to min (trickle load stays cheap).
+        assert_eq!(batch.next_size(40, 39), 10);
+        assert_eq!(batch.next_size(40, 0), 10);
+        // min > current never shrinks below min.
+        assert_eq!(batch.next_size(5, 0), 10);
+    }
+
+    #[test]
+    fn fetch_batch_idle_parking_threshold() {
+        let batch = FetchBatch {
+            min: 10,
+            max: 100,
+            park_after: 60,
+        };
+        assert!(!batch.is_idle_parked(0));
+        assert!(!batch.is_idle_parked(59));
+        assert!(batch.is_idle_parked(60));
+        assert!(batch.is_idle_parked(61));
+        // A single empty poll parks when configured to.
+        assert!(FetchBatch {
+            park_after: 1,
+            ..batch.clone()
+        }
+        .is_idle_parked(1));
+    }
+
+    #[test]
+    fn fetch_batch_defaults_track_the_documented_values() {
+        let batch = FetchBatch::default();
+        assert_eq!(batch.min, DEFAULT_BATCH_MIN);
+        assert_eq!(batch.max, DEFAULT_BATCH_SIZE);
+        assert_eq!(batch.park_after, DEFAULT_IDLE_PARK_AFTER);
+    }
+
+    /// End to end: a batch that grows on demand. 25 due events against
+    /// min 5/max 100 must all drain, and the adaptive loop must have
+    /// doubled (5 → 10 → 20 → 25) rather than fetching one huge batch —
+    /// observable as the store draining to zero within the deadline.
+    #[tokio::test]
+    async fn adaptive_batch_drains_a_backlog() {
+        let store: Arc<dyn OutboxStore> = Arc::new(crate::MemoryStore::new());
+        for i in 0_u32..25 {
+            let mut e = due_event();
+            e.payload = i.to_le_bytes().to_vec();
+            store.append(&e).await.unwrap();
+        }
+        let delivered = Arc::new(AtomicUsize::new(0));
+        let delivered_clone = Arc::clone(&delivered);
+        let sender = static_sender(move |_| {
+            delivered_clone.fetch_add(1, Ordering::Relaxed);
+            Ok(())
+        });
+        let config = DispatcherConfig {
+            poll_interval: Duration::from_millis(5),
+            fetch_batch: FetchBatch {
+                min: 5,
+                max: 100,
+                park_after: u32::MAX,
+            },
+            ..cfg_with_probe_headroom(Duration::from_millis(5))
+        };
+        let dispatcher = Arc::new(Dispatcher::with_config(Arc::clone(&store), sender, config));
+        let runner = tokio::spawn(Arc::clone(&dispatcher).run());
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+        while delivered.load(Ordering::Relaxed) < 25 {
+            assert!(
+                tokio::time::Instant::now() < deadline,
+                "adaptive loop never drained the backlog"
+            );
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+        dispatcher.shutdown();
+        tokio::time::timeout(Duration::from_secs(2), runner)
+            .await
+            .expect("graceful shutdown within 2s")
+            .unwrap();
+        assert_eq!(store.pending_count().await.unwrap(), 0);
     }
 }

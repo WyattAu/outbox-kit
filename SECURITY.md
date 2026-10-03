@@ -4,6 +4,7 @@
 
 | Version | Supported |
 |---------|-----------|
+| 0.2.x   | ✅        |
 | 0.1.x   | ✅        |
 
 ## Reporting a vulnerability
@@ -48,6 +49,11 @@ considerations for integrators:
   sends but never discards events; parked (`NEVER`) events are only ever
   created by the configured `max_attempts` budget. Alert on
   `parked_count > 0` — it means a real event gave up.
+- **Dead letters retain what you hand them.** `dead_letter(event, reason)`
+  persists the envelope and the reason verbatim (reason truncated to
+  1 KiB) and deletes the live row; anyone who can read the store can read
+  past dead letters. Treat reasons as internal diagnostics, and prune
+  `outbox_dead_letters` per your retention policy.
 - `#![forbid(unsafe_code)]` — no unsafe blocks exist in this crate.
 
 [GitHub security advisories]:

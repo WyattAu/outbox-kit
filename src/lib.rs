@@ -29,10 +29,13 @@
 //!   `mark_dispatched` replays the event. Consumers must be idempotent —
 //!   pair this kit with `idempotency-kit` on the receiving side.
 //! - **Pluggable stores.** One object-safe [`OutboxStore`] trait; bring
-//!   your own (Postgres `INSERT ... ON CONFLICT`, `DynamoDB`, ...) for any
-//!   other backend.
+//!   your own (DynamoDB, Kafka compacted topics, ...) for any other
+//!   backend.
 //!
 //! # Stores
+//!
+//! | Store | Feature | Durability | Use for |
+//! |---|---|---|---|
 //!
 #![cfg_attr(
     feature = "memory",
@@ -44,9 +47,44 @@
     doc = "| [`SqliteStore`] | `sqlite` | durable, single file | replay after restart, audit |
 "
 )]
+#![cfg_attr(
+    feature = "postgres",
+    doc = "| [`PostgresStore`] | `postgres` | durable, multi-writer | multi-instance dispatch (`FOR UPDATE SKIP LOCKED`) |
+"
+)]
 //!
-//! | Store | Feature | Durability | Use for |
-//! |---|---|---|---|
+//! # Dead letters vs. parked events
+//!
+//! Two terminal states, deliberately distinct:
+//!
+//! - **Parked** at [`NEVER`] is the *machine's* pause: the dispatcher
+//!   parks an event whose retry budget is exhausted. It stays in the
+//!   live outbox (`parked_count`), one reschedule away from redelivery.
+//! - **Dead-lettered** via [`OutboxStore::dead_letter`] is the
+//!   *operator's* exit: the event leaves the dispatch path entirely and
+//!   is retained with a human-readable reason, retrievable through
+//!   [`OutboxStore::dead_letters`]. The [`memory`](crate::MemoryStore)
+//!   store's default implementation is a documented no-op; the `SQLite`
+//!   and Postgres stores persist letters in a dedicated table.
+//!
+//! # Metrics
+//!
+#![cfg_attr(
+    feature = "metrics",
+    doc = "With the default `metrics` feature, dispatching emits
+`outbox_dispatch_total{result=\"success|failure|breaker-paused\"}`, the
+`outbox_pending` gauge, and the `outbox_dispatch_duration_seconds`
+histogram into a process-wide [`metrics_kit`] registry — render it with
+[`metrics::render`].
+"
+)]
+#![cfg_attr(
+    not(feature = "metrics"),
+    doc = "The `metrics` feature (default) routes dispatch outcomes into a
+`metrics-kit` registry; without it the same control flow compiles against
+a no-op stub and nothing is emitted.
+"
+)]
 //!
 //! # Example
 //!
@@ -107,19 +145,26 @@
 //!
 //! # Roadmap
 //!
-//! - **Redis store** — deferred past 0.1: `fetch_due` needs an ordering
-//!   query over `(next_attempt_at, id)` that Redis lists/sets cannot
-//!   express cleanly without Lua scripting; the kit refuses a store whose
-//!   ordering contract is approximate. (The `SQLite` store covers durable
-//!   single-node deployments in the meantime.)
-//! - Breaker metrics export through `metrics-kit`.
+//! - **Redis store** — deferred: `fetch_due` needs an ordering query over
+//!   `(next_attempt_at, id)` that Redis lists/sets cannot express cleanly
+//!   without Lua scripting; the kit refuses a store whose ordering
+//!   contract is approximate. (The `SQLite` store covers durable
+//!   single-node deployments, Postgres multi-instance, in the meantime.)
 
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
 mod backoff;
+#[cfg(any(feature = "sqlite", feature = "postgres"))]
+mod codec;
 mod error;
 mod event;
+#[cfg(feature = "metrics")]
+pub mod metrics;
+#[cfg(all(not(feature = "metrics"), feature = "dispatch"))]
+mod metrics_noop;
+#[cfg(all(not(feature = "metrics"), feature = "dispatch"))]
+pub(crate) use metrics_noop as metrics;
 mod store;
 
 pub use backoff::{BackoffPolicy, NEVER};
@@ -136,11 +181,17 @@ pub use memory::MemoryStore;
 mod dispatch;
 #[cfg(feature = "dispatch")]
 pub use dispatch::{
-    DispatchSender, Dispatcher, DispatcherConfig, DEFAULT_BATCH_SIZE, DEFAULT_CONCURRENCY,
-    DEFAULT_POLL_INTERVAL,
+    DispatchSender, Dispatcher, DispatcherConfig, FetchBatch, DEFAULT_BATCH_MIN,
+    DEFAULT_BATCH_SIZE, DEFAULT_CONCURRENCY, DEFAULT_IDLE_PARK_AFTER, DEFAULT_POLL_INTERVAL,
+    IDLE_POLL_DIVISOR,
 };
 
 #[cfg(feature = "sqlite")]
 mod sqlite;
 #[cfg(feature = "sqlite")]
 pub use sqlite::SqliteStore;
+
+#[cfg(feature = "postgres")]
+mod postgres;
+#[cfg(feature = "postgres")]
+pub use postgres::PostgresStore;

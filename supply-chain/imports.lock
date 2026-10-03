@@ -1,2 +1,6 @@
 
 # cargo-vet imports lock
+
+[[unpublished.outbox-kit]]
+version = "0.2.0"
+audited_as = "0.1.1"

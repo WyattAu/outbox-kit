@@ -1,9 +1,9 @@
 [package]
 name = "outbox-kit"
-version = "0.1.1"
+version = "0.2.0"
 edition = "2021"
 rust-version = "1.85"
-description = "Transactional outbox for Rust — durable event envelopes, at-least-once dispatch with breaker-aware backoff, replay after restart"
+description = "Transactional outbox for Rust — durable event envelopes, at-least-once dispatch with breaker-aware backoff, Postgres/SQLite/memory stores, dead letters, Prometheus metrics"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/WyattAu/outbox-kit"
 keywords = ["outbox", "events", "cqrs", "reliability", "webhooks"]
@@ -11,11 +11,13 @@ categories = ["asynchronous", "concurrency"]
 exclude = [".github/", "benches/"]
 
 [features]
-default = ["serde", "memory", "dispatch"]
+default = ["serde", "memory", "dispatch", "metrics"]
 serde = ["dep:serde"]
 memory = []
 dispatch = ["dep:breaker", "dep:futures", "dep:tokio"]
 sqlite = ["dep:rusqlite"]
+postgres = ["dep:sqlx"]
+metrics = ["dep:metrics-kit"]
 
 [dependencies]
 async-trait = "0.1"
@@ -27,11 +29,18 @@ breaker = { version = "2", features = ["timeout"], optional = true }
 futures = { version = "0.3", default-features = false, features = [
   "std",
 ], optional = true }
+metrics-kit = { version = "0.2", optional = true }
 rand = { version = "0.10", default-features = false, features = ["std"] }
 rusqlite = { version = "0.40", features = ["bundled"], optional = true }
 serde = { version = "1", default-features = false, features = [
   "derive",
   "std",
+], optional = true }
+# Runtime queries only (no `macros`): the stores build statements at
+# runtime, so the proc-macro stack stays out of consumer builds.
+sqlx = { version = "0.8", default-features = false, features = [
+  "runtime-tokio",
+  "postgres",
 ], optional = true }
 thiserror = { version = "2", default-features = false }
 tokio = { version = "1", default-features = false, features = [
@@ -48,6 +57,14 @@ futures = { version = "0.3", default-features = false, features = ["std"] }
 proptest = "1"
 serde_json = "1"
 tempfile = "3"
+# The postgres integration suite drives raw locking transactions next to
+# the store (tests/postgres_outbox.rs, all #[ignore]d behind Docker).
+sqlx = { version = "0.8", default-features = false, features = [
+  "runtime-tokio",
+  "postgres",
+] }
+testcontainers = "0.27"
+testcontainers-modules = { version = "0.15", features = ["postgres"] }
 tokio = { version = "1", features = [
   "rt-multi-thread",
   "macros",
@@ -62,6 +79,10 @@ harness = false
 [[test]]
 name = "sqlite_outbox"
 required-features = ["sqlite"]
+
+[[test]]
+name = "postgres_outbox"
+required-features = ["postgres"]
 
 [lints.rust]
 unsafe_code = "forbid"

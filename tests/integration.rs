@@ -299,9 +299,83 @@ fn dispatcher_defaults_match_documentation() {
     let config = DispatcherConfig::default();
     assert_eq!(config.poll_interval, DEFAULT_POLL_INTERVAL);
     assert_eq!(config.concurrency, DEFAULT_CONCURRENCY);
-    assert_eq!(config.batch_size, 100);
+    assert_eq!(config.fetch_batch.max, 100);
+    assert_eq!(config.fetch_batch.min, 10);
+    assert_eq!(config.fetch_batch.park_after, 60);
     assert_eq!(DEFAULT_BATCH_SIZE, 100);
     assert_eq!(config.backoff, BackoffPolicy::default());
+}
+
+/// The dead-letter trait surface on the memory store: the default
+/// implementation is a documented no-op — `dead_letter` succeeds but
+/// retains nothing, `dead_letters` returns empty. (Durable letters live
+/// in the SQLite/Postgres stores; see their suites.)
+#[tokio::test]
+async fn memory_store_dead_letters_are_a_documented_no_op() {
+    let store: Arc<dyn OutboxStore> = Arc::new(MemoryStore::new());
+    let e = event("orders", 1_000);
+    store.append(&e).await.unwrap();
+
+    store.dead_letter(&e, "rerouted to support").await.unwrap();
+    assert!(store.dead_letters(10).await.unwrap().is_empty());
+    // The letter does not disturb the live space.
+    assert_eq!(store.pending_count().await.unwrap(), 1);
+}
+
+/// The full DLQ flow through the dispatcher: a permanently failing sender
+/// parks the event; the operator dead-letters it (with the reason); the
+/// event leaves every live count and shows up retrievable.
+#[tokio::test]
+#[cfg(feature = "sqlite")]
+async fn dispatcher_park_then_operator_dead_letter_flow() {
+    let store: Arc<dyn OutboxStore> = Arc::new(outbox_kit::SqliteStore::open_in_memory().unwrap());
+    let e = event("orders.order-refused", 0);
+    store.append(&e).await.unwrap();
+
+    let config = DispatcherConfig {
+        poll_interval: Duration::from_millis(10),
+        backoff: BackoffPolicy {
+            base: Duration::from_millis(5),
+            factor: 2.0,
+            cap: Duration::from_millis(20),
+            max_attempts: 3,
+        },
+        breaker: breaker_config(Duration::from_millis(50)),
+        ..DispatcherConfig::default()
+    };
+    let sender = static_sender(|_| Err(DispatchError::Delivery("410 gone".into())));
+    let dispatcher = Arc::new(Dispatcher::with_config(Arc::clone(&store), sender, config));
+    let runner = tokio::spawn(Arc::clone(&dispatcher).run());
+
+    // Automatic exhaustion parks — it must NOT dead-letter.
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+    while store.parked_count().await.unwrap() < 1 {
+        assert!(tokio::time::Instant::now() < deadline, "event never parked");
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    dispatcher.shutdown();
+    tokio::time::timeout(Duration::from_secs(2), runner)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(store.dead_letters(10).await.unwrap().is_empty());
+
+    // The operator closes the case: dead-letter with a reason.
+    let parked = store.fetch_due(10, u64::MAX).await.unwrap(); // empty: parked
+    assert!(parked.is_empty());
+    store
+        .dead_letter(&e, "destination decommissioned 2026-10-03")
+        .await
+        .unwrap();
+
+    assert_eq!(store.parked_count().await.unwrap(), 0);
+    assert_eq!(store.pending_count().await.unwrap(), 0);
+    let letters = store.dead_letters(10).await.unwrap();
+    assert_eq!(letters.len(), 1);
+    let (letter, reason) = letters.first().unwrap();
+    assert_eq!(letter.id, e.id);
+    assert_eq!(letter.topic, "orders.order-refused");
+    assert_eq!(reason, "destination decommissioned 2026-10-03");
 }
 
 /// Error types cross the API boundary as typed values.

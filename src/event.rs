@@ -67,8 +67,8 @@ impl EventId {
         self.0
     }
 
-    /// Parse the hyphenated string form (as produced by [`Display`] and by
-    /// the stores).
+    /// Parse the hyphenated string form (as produced by
+    /// [`Display`](std::fmt::Display) and by the stores).
     ///
     /// # Errors
     ///
