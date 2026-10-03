@@ -1,4 +1,7 @@
 
 # cargo-vet audits file
 
-[audits]
+[[audits.outbox-kit]]
+criteria = "safe-to-deploy"
+version = "0.2.0"
+notes = "WyattAu first-party crate; 0.2.0 adds the Postgres store (FOR UPDATE SKIP LOCKED claiming, status state machine, dead-letter table), the OutboxStore dead-letter surface, dispatch metrics via metrics-kit 0.2, and FetchBatch adaptive tuning — reviewed as the original in-tree implementation."
