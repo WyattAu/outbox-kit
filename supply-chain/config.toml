@@ -83,8 +83,16 @@ criteria = "safe-to-run"
 version = "0.8.0"
 criteria = "safe-to-run"
 
+[[exemptions.bit-set]]
+version = "0.11.1"
+criteria = "safe-to-run"
+
 [[exemptions.bit-vec]]
 version = "0.8.0"
+criteria = "safe-to-run"
+
+[[exemptions.bit-vec]]
+version = "0.10.1"
 criteria = "safe-to-run"
 
 [[exemptions.bitflags]]
@@ -109,6 +117,14 @@ criteria = "safe-to-run"
 
 [[exemptions.bollard-stubs]]
 version = "1.52.1-rc.29.1.3"
+criteria = "safe-to-run"
+
+[[exemptions.borsh]]
+version = "1.8.1"
+criteria = "safe-to-run"
+
+[[exemptions.borsh-derive]]
+version = "1.8.1"
 criteria = "safe-to-run"
 
 [[exemptions.breaker]]
@@ -142,6 +158,10 @@ criteria = "safe-to-deploy"
 [[exemptions.cfg-if]]
 version = "1.0.4"
 criteria = "safe-to-deploy"
+
+[[exemptions.cfg_aliases]]
+version = "0.2.2"
+criteria = "safe-to-run"
 
 [[exemptions.chacha20]]
 version = "0.10.2"
@@ -181,6 +201,10 @@ criteria = "safe-to-run"
 
 [[exemptions.core-foundation-sys]]
 version = "0.8.7"
+criteria = "safe-to-run"
+
+[[exemptions.core_detect]]
+version = "1.0.0"
 criteria = "safe-to-run"
 
 [[exemptions.cpufeatures]]
@@ -787,12 +811,20 @@ criteria = "safe-to-run"
 version = "0.2.21"
 criteria = "safe-to-deploy"
 
+[[exemptions.proc-macro-crate]]
+version = "3.5.0"
+criteria = "safe-to-run"
+
 [[exemptions.proc-macro2]]
 version = "1.0.107"
 criteria = "safe-to-deploy"
 
 [[exemptions.proptest]]
 version = "1.11.0"
+criteria = "safe-to-run"
+
+[[exemptions.proptest]]
+version = "1.12.0"
 criteria = "safe-to-run"
 
 [[exemptions.prost]]
@@ -835,6 +867,10 @@ criteria = "safe-to-run"
 version = "0.10.2"
 criteria = "safe-to-deploy"
 
+[[exemptions.rand]]
+version = "0.10.3"
+criteria = "safe-to-deploy"
+
 [[exemptions.rand_chacha]]
 version = "0.3.1"
 criteria = "safe-to-deploy"
@@ -857,6 +893,10 @@ criteria = "safe-to-deploy"
 
 [[exemptions.rand_xorshift]]
 version = "0.4.0"
+criteria = "safe-to-run"
+
+[[exemptions.rand_xorshift]]
+version = "0.5.0"
 criteria = "safe-to-run"
 
 [[exemptions.rayon]]
@@ -995,6 +1035,10 @@ criteria = "safe-to-deploy"
 version = "1.0.151"
 criteria = "safe-to-deploy"
 
+[[exemptions.serde_json]]
+version = "1.0.154"
+criteria = "safe-to-deploy"
+
 [[exemptions.serde_repr]]
 version = "0.1.21"
 criteria = "safe-to-run"
@@ -1119,8 +1163,16 @@ criteria = "safe-to-run"
 version = "2.0.20"
 criteria = "safe-to-deploy"
 
+[[exemptions.thiserror]]
+version = "2.0.21"
+criteria = "safe-to-deploy"
+
 [[exemptions.thiserror-impl]]
 version = "2.0.20"
+criteria = "safe-to-deploy"
+
+[[exemptions.thiserror-impl]]
+version = "2.0.21"
 criteria = "safe-to-deploy"
 
 [[exemptions.thread_local]]
@@ -1155,6 +1207,10 @@ criteria = "safe-to-deploy"
 version = "1.53.1"
 criteria = "safe-to-deploy"
 
+[[exemptions.tokio]]
+version = "1.53.3"
+criteria = "safe-to-deploy"
+
 [[exemptions.tokio-macros]]
 version = "2.7.2"
 criteria = "safe-to-deploy"
@@ -1169,6 +1225,18 @@ criteria = "safe-to-deploy"
 
 [[exemptions.tokio-util]]
 version = "0.7.19"
+criteria = "safe-to-run"
+
+[[exemptions.toml_datetime]]
+version = "1.1.2+spec-1.1.0"
+criteria = "safe-to-run"
+
+[[exemptions.toml_edit]]
+version = "0.25.17+spec-1.1.0"
+criteria = "safe-to-run"
+
+[[exemptions.toml_parser]]
+version = "1.1.5+spec-1.1.0"
 criteria = "safe-to-run"
 
 [[exemptions.tonic]]
@@ -1265,6 +1333,10 @@ criteria = "safe-to-deploy"
 
 [[exemptions.uuid]]
 version = "1.26.1"
+criteria = "safe-to-deploy"
+
+[[exemptions.uuid]]
+version = "1.28.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.valuable]]
@@ -1449,6 +1521,10 @@ criteria = "safe-to-deploy"
 
 [[exemptions.windows_x86_64_msvc]]
 version = "0.52.6"
+criteria = "safe-to-run"
+
+[[exemptions.winnow]]
+version = "1.0.4"
 criteria = "safe-to-run"
 
 [[exemptions.wit-bindgen]]
