@@ -1,4 +1,5 @@
 # outbox-kit
+[![Estate integration](https://github.com/WyattAu/estate-integration/actions/workflows/ci.yml/badge.svg)](https://github.com/WyattAu/estate-integration/actions/workflows/ci.yml)
 
 Transactional outbox for Rust: durable event envelopes, at-least-once
 dispatch with breaker-aware backoff, replay after restart.
