@@ -1,9 +1,9 @@
 [package]
 name = "outbox-kit"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2021"
 rust-version = "1.85"
-description = "Transactional outbox for Rust — durable event envelopes, at-least-once dispatch with breaker-aware backoff, Postgres/SQLite/memory stores, dead letters, Prometheus metrics"
+description = "Transactional outbox for Rust: durable event envelopes, at-least-once dispatch with breaker-aware backoff, replay after restart"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/WyattAu/outbox-kit"
 keywords = ["outbox", "events", "cqrs", "reliability", "webhooks"]
