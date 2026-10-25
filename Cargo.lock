@@ -1616,9 +1616,9 @@ checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
 
 [[package]]
 name = "metrics-kit"
-version = "0.2.0"
+version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "71555c355c34727dafcea9a2b9bf1d7592c4de055750f8a1e61f77d18f49d7cd"
+checksum = "97ac0302f40bde9d7a9c28aebecb57101481b121d23b6d5e8b9347f6eaac8d6c"
 
 [[package]]
 name = "mime"
@@ -1744,7 +1744,7 @@ checksum = "7c87def4c32ab89d880effc9e097653c8da5d6ef28e6b539d313baaacfbafcbe"
 
 [[package]]
 name = "outbox-kit"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "async-trait",
  "breaker",

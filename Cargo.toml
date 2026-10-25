@@ -1,6 +1,6 @@
 [package]
 name = "outbox-kit"
-version = "0.2.1"
+version = "0.2.2"
 edition = "2021"
 rust-version = "1.85"
 description = "Transactional outbox for Rust: durable event envelopes, at-least-once dispatch with breaker-aware backoff, replay after restart"
@@ -29,7 +29,7 @@ breaker = { version = "2", features = ["timeout"], optional = true }
 futures = { version = "0.3", default-features = false, features = [
   "std",
 ], optional = true }
-metrics-kit = { version = "0.2", optional = true }
+metrics-kit = { version = "1", optional = true }
 rand = { version = "0.10", default-features = false, features = ["std"] }
 rusqlite = { version = "0.40", features = ["bundled"], optional = true }
 serde = { version = "1", default-features = false, features = [
