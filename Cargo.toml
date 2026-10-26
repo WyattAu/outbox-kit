@@ -38,7 +38,7 @@ serde = { version = "1", default-features = false, features = [
 ], optional = true }
 # Runtime queries only (no `macros`): the stores build statements at
 # runtime, so the proc-macro stack stays out of consumer builds.
-sqlx = { version = "0.8", default-features = false, features = [
+sqlx = { version = "0.9", default-features = false, features = [
   "runtime-tokio",
   "postgres",
 ], optional = true }
@@ -59,7 +59,7 @@ serde_json = "1"
 tempfile = "3"
 # The postgres integration suite drives raw locking transactions next to
 # the store (tests/postgres_outbox.rs, all #[ignore]d behind Docker).
-sqlx = { version = "0.8", default-features = false, features = [
+sqlx = { version = "0.9", default-features = false, features = [
   "runtime-tokio",
   "postgres",
 ] }
