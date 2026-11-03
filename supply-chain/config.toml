@@ -172,10 +172,6 @@ criteria = "safe-to-run"
 version = "0.2.17"
 criteria = "safe-to-deploy"
 
-[[exemptions.cpufeatures]]
-version = "0.3.1"
-criteria = "safe-to-deploy"
-
 [[exemptions.crc]]
 version = "3.4.0"
 criteria = "safe-to-deploy"
@@ -816,10 +812,6 @@ criteria = "safe-to-run"
 version = "0.103.15"
 criteria = "safe-to-run"
 
-[[exemptions.rustls-webpki]]
-version = "0.103.16"
-criteria = "safe-to-run"
-
 [[exemptions.rustversion]]
 version = "1.0.23"
 criteria = "safe-to-deploy"
@@ -971,10 +963,6 @@ criteria = "safe-to-deploy"
 [[exemptions.syn]]
 version = "3.0.5"
 criteria = "safe-to-deploy"
-
-[[exemptions.sync_wrapper]]
-version = "1.0.2"
-criteria = "safe-to-run"
 
 [[exemptions.synstructure]]
 version = "0.14.0"
@@ -1170,10 +1158,6 @@ criteria = "safe-to-deploy"
 
 [[exemptions.web-sys]]
 version = "0.3.105"
-criteria = "safe-to-run"
-
-[[exemptions.web-time]]
-version = "1.1.0"
 criteria = "safe-to-run"
 
 [[exemptions.whoami]]
