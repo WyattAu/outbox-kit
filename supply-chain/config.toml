@@ -172,10 +172,6 @@ criteria = "safe-to-run"
 version = "0.2.17"
 criteria = "safe-to-deploy"
 
-[[exemptions.cpufeatures]]
-version = "0.3.1"
-criteria = "safe-to-deploy"
-
 [[exemptions.crc]]
 version = "3.4.0"
 criteria = "safe-to-deploy"
@@ -292,32 +288,8 @@ criteria = "safe-to-deploy"
 version = "0.1.5"
 criteria = "safe-to-deploy"
 
-[[exemptions.futures]]
-version = "0.3.34"
-criteria = "safe-to-deploy"
-
-[[exemptions.futures-channel]]
-version = "0.3.34"
-criteria = "safe-to-deploy"
-
-[[exemptions.futures-executor]]
-version = "0.3.34"
-criteria = "safe-to-deploy"
-
 [[exemptions.futures-intrusive]]
 version = "0.5.0"
-criteria = "safe-to-deploy"
-
-[[exemptions.futures-io]]
-version = "0.3.34"
-criteria = "safe-to-deploy"
-
-[[exemptions.futures-macro]]
-version = "0.3.34"
-criteria = "safe-to-deploy"
-
-[[exemptions.futures-sink]]
-version = "0.3.34"
 criteria = "safe-to-deploy"
 
 [[exemptions.futures-task]]
@@ -564,6 +536,10 @@ criteria = "safe-to-deploy"
 version = "0.2.0"
 criteria = "safe-to-deploy"
 
+[[exemptions.metrics-kit]]
+version = "1.0.0"
+criteria = "safe-to-deploy"
+
 [[exemptions.mime]]
 version = "0.3.17"
 criteria = "safe-to-run"
@@ -603,6 +579,10 @@ criteria = "safe-to-deploy"
 [[exemptions.openssl-probe]]
 version = "0.2.1"
 criteria = "safe-to-run"
+
+[[exemptions.outbox-kit]]
+version = "0.2.2"
+criteria = "safe-to-deploy"
 
 [[exemptions.page_size]]
 version = "0.6.0"
@@ -816,10 +796,6 @@ criteria = "safe-to-run"
 version = "0.103.15"
 criteria = "safe-to-run"
 
-[[exemptions.rustls-webpki]]
-version = "0.103.16"
-criteria = "safe-to-run"
-
 [[exemptions.rustversion]]
 version = "1.0.23"
 criteria = "safe-to-deploy"
@@ -971,10 +947,6 @@ criteria = "safe-to-deploy"
 [[exemptions.syn]]
 version = "3.0.5"
 criteria = "safe-to-deploy"
-
-[[exemptions.sync_wrapper]]
-version = "1.0.2"
-criteria = "safe-to-run"
 
 [[exemptions.synstructure]]
 version = "0.14.0"
@@ -1170,10 +1142,6 @@ criteria = "safe-to-deploy"
 
 [[exemptions.web-sys]]
 version = "0.3.105"
-criteria = "safe-to-run"
-
-[[exemptions.web-time]]
-version = "1.1.0"
 criteria = "safe-to-run"
 
 [[exemptions.whoami]]
