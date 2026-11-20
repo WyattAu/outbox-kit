@@ -564,6 +564,10 @@ criteria = "safe-to-deploy"
 version = "0.2.0"
 criteria = "safe-to-deploy"
 
+[[exemptions.metrics-kit]]
+version = "1.0.0"
+criteria = "safe-to-deploy"
+
 [[exemptions.mime]]
 version = "0.3.17"
 criteria = "safe-to-run"
@@ -603,6 +607,10 @@ criteria = "safe-to-deploy"
 [[exemptions.openssl-probe]]
 version = "0.2.1"
 criteria = "safe-to-run"
+
+[[exemptions.outbox-kit]]
+version = "0.2.2"
+criteria = "safe-to-deploy"
 
 [[exemptions.page_size]]
 version = "0.6.0"
